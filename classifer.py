@@ -94,3 +94,35 @@ parameters = {'vect__ngram_range': [(1, 1), (1, 2)],
 gs_clf = GridSearchCV(text_svm_clf, parameters, n_jobs=-1)
 
 gs_clf = gs_clf.fit(train['text'], train['College'])
+
+best_parameters, score, _ = max(gs_clf.grid_scores_, key=lambda x: x[1])
+for param_name in sorted(parameters.keys()):
+    print("%s: %r" % (param_name, best_parameters[param_name]))
+    
+# optimized SVM
+text_svm_clf = Pipeline([('vect', CountVectorizer(ngram_range = (1,2))),
+                    ('tfidf', TfidfTransformer(use_idf='True')),
+                    ('clf', SGDClassifier(loss='hinge', penalty='l2',
+                                         alpha=1e-3, n_iter=5, random_state=42)),])
+                                         
+text_svm_clf = text_svm_clf.fit(train['text'], train['College'])
+pred_svm_train = text_svm_clf.predict(train['text'])
+np.mean(pred_svm_train == train['College']) 
+#0.87287405812701835
+
+pred_svm_valid = text_svm_clf.predict(valid['text'])
+np.mean(pred_svm_valid == valid['College']) 
+#0.83140053523639612
+
+
+pred_svm_test = text_clf.predict(test['text'])
+
+# export test authors to CSV
+predictions = pd.DataFrame(pred_svm_test)
+predictions.columns = ['Pred_College']
+
+predictions = predictions.set_index(test.index)
+
+test['College'] = predictions
+
+test.to_csv('missing_depts.csv')
