@@ -14,12 +14,12 @@ name = 'updated.csv'
 dataset = pd.read_csv(name)
 
 # combine Title and Journal Name into one "text" field
-dataset["text"] = dataset["Title"] + dataset["Source.title"]
+dataset["text"] = dataset["Title"] + " " + dataset["Source.title"] + " " + dataset["Authors"] + " " + dataset["Year"].map(str)
 
 # partition to label (train) and non-label or missing college (test)
 
-train = dataset[(dataset['University'] == 'UNCC') & (dataset['College'] != 'Missing')]           
-test = dataset[(dataset['University'] == 'UNCC') & (dataset['College'] == 'Missing')]  
+train = dataset[(dataset['University'] == 'UNCC') & (dataset['Department'] != 'Other')]           
+test = dataset[(dataset['University'] == 'UNCC') & (dataset['Department'] == 'Other')]  
 
 # partition labelled into 80% train and 20% validation
 
@@ -52,16 +52,16 @@ text_clf = Pipeline([('vect', CountVectorizer()),
                      ('clf', MultinomialNB()),])
                      
 # train and predict on training dataset                     
-text_clf = text_clf.fit(train['text'], train['College'])
+text_clf = text_clf.fit(train['text'], train['Department'])
 pred_nb_train = text_clf.predict(train['text'])
-np.mean(pred_nb_train == train['College'])  
-# 0.84424111948331537
+np.mean(pred_nb_train == train['Department'])  
+# Department: 0.73721606200882761
 
 # score 
 
 pred_nb_valid = text_clf.predict(valid['text'])
-np.mean(pred_nb_valid == valid['College'])  
-# 0.80999107939339876
+np.mean(pred_nb_valid == valid['Department'])  
+# Department: 0.67125721901377167
 
 pred_nb_test = text_clf.predict(test['text'])
 
@@ -73,14 +73,14 @@ text_svm_clf = Pipeline([('vect', CountVectorizer()),
                     ('clf', SGDClassifier(loss='hinge', penalty='l2',
                                          alpha=1e-3, n_iter=5, random_state=42)),])
                                          
-text_svm_clf = text_svm_clf.fit(train['text'], train['College'])
+text_svm_clf = text_svm_clf.fit(train['text'], train['Department'])
 pred_svm_train = text_svm_clf.predict(train['text'])
-np.mean(pred_svm_train == train['College']) 
-#0.84596340150699678
+np.mean(pred_svm_train == train['Department']) 
+# Department: 0.89740553342663365
 
 pred_svm_valid = text_svm_clf.predict(valid['text'])
-np.mean(pred_svm_valid == valid['College']) 
-#0.8153434433541481
+np.mean(pred_svm_valid == valid['Department']) 
+# Department: 0.81919147045757446
 
 pred_svm_test = text_clf.predict(test['text'])
 
@@ -93,36 +93,48 @@ parameters = {'vect__ngram_range': [(1, 1), (1, 2)],
               
 gs_clf = GridSearchCV(text_svm_clf, parameters, n_jobs=-1)
 
-gs_clf = gs_clf.fit(train['text'], train['College'])
+gs_clf = gs_clf.fit(train['text'], train['Department'])
 
 best_parameters, score, _ = max(gs_clf.grid_scores_, key=lambda x: x[1])
 for param_name in sorted(parameters.keys()):
     print("%s: %r" % (param_name, best_parameters[param_name]))
     
 # optimized SVM
-text_svm_clf = Pipeline([('vect', CountVectorizer(ngram_range = (1,2))),
+text_svm_clf = Pipeline([('vect', CountVectorizer(ngram_range = (1,1))),
                     ('tfidf', TfidfTransformer(use_idf='True')),
                     ('clf', SGDClassifier(loss='hinge', penalty='l2',
                                          alpha=1e-3, n_iter=5, random_state=42)),])
                                          
-text_svm_clf = text_svm_clf.fit(train['text'], train['College'])
+text_svm_clf = text_svm_clf.fit(train['text'], train['Department'])
 pred_svm_train = text_svm_clf.predict(train['text'])
-np.mean(pred_svm_train == train['College']) 
-#0.87287405812701835
+np.mean(pred_svm_train == train['Department']) 
+# Department: 0.89740553342663365
 
 pred_svm_valid = text_svm_clf.predict(valid['text'])
-np.mean(pred_svm_valid == valid['College']) 
-#0.83140053523639612
+np.mean(pred_svm_valid == valid['Department']) 
+# Department: 0.81919147045757446
 
+xtab = pd.crosstab(pred_svm_valid,valid['Department'])
+xtab.to_csv('conf_matrix_dept.csv')
 
 pred_svm_test = text_clf.predict(test['text'])
 
+groups = pd.DataFrame(train.groupby(['Department','College']).groups.keys())
+groups.columns = ['Department','College_Rep']
+
+
 # export test authors to CSV
 predictions = pd.DataFrame(pred_svm_test)
-predictions.columns = ['Pred_College']
+predictions.columns = ['Pred_Dept']
 
 predictions = predictions.set_index(test.index)
 
-test['College'] = predictions
+test['Department'] = predictions
+
+test = test.merge(groups, how='inner', on='Department')
+
+test['College'] = test['College_Rep']
+test.drop('College_Rep', 1)
+
 
 test.to_csv('missing_depts.csv')
